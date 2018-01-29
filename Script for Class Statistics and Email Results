@@ -1,0 +1,166 @@
+//*************************************README**********************************************************
+//Created by Mason Pierce
+//
+//  Functions:
+//  -calcUpdates()
+//  -convert() (called in calcUpdates)
+//  -makeChart() (called in calcUpdates)
+//  -sendEmails()
+//  -convSheetAndEmail() (called in sendEmails)
+//
+//TODO BEFORE RUNNING
+//1. Create a new sheet called exactly "Calculations"
+//2. Must install library (resources>libraries...) from key BEFORE sending emails: Mo6Ljr7ZKrMeYO9mHqOdo9oxc-w7mEonb 
+//3. Update functions to match rubric
+//      calcUpdates()
+//         - var grade (edit notation so that it matches the cell with the overall score)
+//         - Optional: can change destSheet if you don't want the name to be "Calculations" just make sure they match
+//      sendEmails()
+//         - make sure range is correct (probably will be unless one of the beginning columns shouldn't be included)
+//         - make sure the range referencing the email is referencing the correct cell
+//         - make sure that cell has a CORRECT email in it
+//         - make sure the area where the condition "EMAIL_SENT" will be set is clear of important information
+//         - make sure to change var message AND var subject
+//         - can hide cells that you don't want to be used in the calculations and/or the emails
+//******************************************************************************************************
+
+
+function calcUpdates(){
+ var spreadSheet = SpreadsheetApp.getActive(); //test spreadsheet
+ var destSheet = spreadSheet.getSheetByName('Calculations'); //gets spreadsheet name on which calculations will be compiled
+ var allSheets = spreadSheet.getSheets(); //gets array of sheets
+ var beginList = destSheet.getRange('A2'); //gets the beginning of the list where the values will be added
+ var row = 2;
+ var col = 1;
+ var numOfStudents = 1;
+ var listName = ["Class Scores (out of 100)", "Mean", "Median", "Mode", "StandardDev", "Interval", "NormalDist"]; //array of title names
+ var titleRow = 1;
+ var titleCol = 1;
+  for(var i = 0; i < listName.length; i++) {
+    if(i < 1){
+   destSheet.getRange(titleRow, titleCol).setValue(listName[i]);//sets the top of the list titles
+      titleCol+=3;
+    } else if(i > 4){
+      titleCol -= 1;
+      titleRow = 1;
+      destSheet.getRange(titleRow, titleCol).setValue(listName[i]);
+      
+    } else{
+    destSheet.getRange(titleRow, titleCol).setValue(listName[i]);
+      titleRow +=2; //alternates lines
+    }
+  }  
+ for(var i = 1; i < allSheets.length; i++){
+   var grade = allSheets[i].getRange('B23');//EDIT: enter the value where the score will be pulled
+   grade.copyValuesToRange(destSheet, col, col, row, row);//copies values from each sheet and places them on the dest sheet
+   
+   var copiedVal = destSheet.getRange(row, col, 1, 1).getValue();//multiplies the values by 100 and returns them to same spot
+   copiedVal = convert(copiedVal);
+   destSheet.getRange(row, col, 1, 1).setValue(copiedVal);
+   row++;
+ }
+  
+  var rangeToName = destSheet.getRange(2, 1, row, col);
+  spreadSheet.setNamedRange("classScores", rangeToName);
+  rangeToName.sort({column: 1, ascending: true});
+  var numOfStudents = row - 1;
+  
+  //populates alternating columns with formulas
+  var mean = '=AVERAGE(classScores)';
+  var median = '=MEDIAN(classScores)';
+  var mode = '=MODE(classScores)';
+  var standardDev = '=STDEV(classScores)';
+  var interval = 1;
+  var allAnalysis = [mean, median, mode, standardDev, interval];
+  
+  var funcRow = 2;
+  var funcCol = 4;
+  
+  for(var i = 0; i < allAnalysis.length; i++){
+    
+    if(i == 4){
+      funcRow = 2;
+      funcCol = 3;
+      var prevRow = 2;
+      
+      for(var j = 0; j < numOfStudents - 1; j++){ //populate interval
+        if(j < 1){
+        destSheet.getRange(funcRow, funcCol).setValue(0);
+        funcRow++;
+        } else{
+        var prevVal = destSheet.getRange(prevRow, funcCol).getValue();
+        destSheet.getRange(funcRow, funcCol).setValue(prevVal + interval);
+        funcRow++;
+        prevRow++;
+        }
+              } 
+      var tempRange = destSheet.getRange(2, funcCol, funcRow);
+      spreadSheet.setNamedRange(listName[i+1], tempRange);//name range "interval"
+      
+    } else{
+    var tempRange = destSheet.getRange(funcRow, funcCol);
+     spreadSheet.setNamedRange(listName[i+1], tempRange);
+     tempRange.setFormula(allAnalysis[i]);
+     funcRow += 2;
+  }
+  }
+    funcRow = 2;
+    funcCol = 2;
+  for(var i = 0; i < numOfStudents - 1; i++){//populate normal distribution
+    destSheet.getRange(funcRow, funcCol).setFormula('=NORMDIST(Interval, Mean, StandardDev, TRUE)');
+    funcRow++;
+  }
+  var chart = destSheet.getCharts();//checks to make sure there isn't already a chart
+  if(chart.length == 0){
+    makeChart(numOfStudents);
+  
+}
+}
+function convert(unconverted){
+ return unconverted * 100;
+}
+//*************************makeChart*******************************************************  
+  function makeChart(row){
+   var spreadSheet = SpreadsheetApp.getActive(); 
+   var destSheet = spreadSheet.getSheetByName('Calculations');
+   var chartRange = destSheet.getRange(1, 1, row, 1);
+   var chartBuilder = destSheet.newChart();
+   chartBuilder.addRange(chartRange).setChartType(Charts.ChartType.COMBO).setPosition(row+2, 1, 0, 0);
+   chartBuilder.setOption('legend', {position: 'right'});
+   chartBuilder.setOption('title', 'Class Scores');                         
+   destSheet.insertChart(chartBuilder.build());
+ }
+//**************************sendEmails******************************************************
+
+var EMAIL_SENT = "EMAIL_SENT";
+
+function sendEmails() {
+  var spreadSheet = SpreadsheetApp.getActive();
+  var allSheets = spreadSheet.getSheets();
+  for(var i = 1; i < allSheets.length; i++){
+   var startRow = 1;  // First row of data to process
+   var numRows = allSheets[i].getLastRow()   // Number of rows to process
+   var startCol = 1;// First column of data to process
+   var numCols = allSheets[i].getLastColumn();// Number of columns to process
+    
+   var email = allSheets[i].getRange('B2').getValue();//EDIT: enter the value where the email will be pulled
+   var dataRange = allSheets[i].getRange(startRow, startCol, numRows, numCols)
+   var rubric = dataRange.getValues();
+   var message = '<p>Hi,<br/><br/>Attached is your grade for the PHD.  Feel free to ask any questions. <br/><br/>Thanks,<br/> Mason <br/>';
+   var emailSent = allSheets[i].getRange('B1').getValue();
+    
+   if (emailSent != EMAIL_SENT) {  // Prevents sending duplicates
+    var subject = "Professional Happiness Design Grade";
+     convSheetAndEmail(dataRange, email, subject, message);
+      allSheets[i].getRange('B1').setValue(EMAIL_SENT);
+      // Make sure the cell is updated right away in case the script is interrupted
+      SpreadsheetApp.flush();
+ }
+  }
+}
+function convSheetAndEmail(rng, email, subj, message)
+{
+  var HTML = message + SheetConverter.convertRange2html(rng);
+  MailApp.sendEmail(email, subj, message, {htmlBody : HTML});
+}
+
